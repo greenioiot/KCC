@@ -9,6 +9,7 @@
 //Library ThingIO board
 #include <Wire.h>
 #include <Adafruit_ADS1015.h>
+
 #include "BluetoothSerial.h"
 
 WiFiManager wifiManager;
@@ -78,6 +79,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 char mqtt_url[50];
 char mqtt_topic[50];
 char frequency[4];
+char device_token[25];
 bool shouldSaveConfig = false;
 
 //callback notifying us of the need to save config
@@ -115,6 +117,7 @@ void setup(void)
           strcpy(mqtt_url, json["mqtt_url"]);
           strcpy(mqtt_topic, json["mqtt_topic"]);
           strcpy(frequency, json["frequency"]);
+          strcpy(device_token, json["device_token"]);
         } else {
           Serial.println("failed to load json config");
         }
@@ -127,6 +130,7 @@ void setup(void)
   WiFiManagerParameter mqtt_url_param("MQTT_URL", "MQTT_URL", mqtt_url, 50);
   WiFiManagerParameter mqtt_topic_param("MQTT_TOPIC", "MQTT_TOPIC", mqtt_topic, 50);
   WiFiManagerParameter frequency_param("FREQUENCY", "FREQUENCY", frequency, 4);
+  WiFiManagerParameter device_token_param("DEVICE_TOKEN", "DEVICE_TOKEN", device_token, 25);
   
 ///---------------------
   wifiManager.setTimeout(120);
@@ -134,6 +138,7 @@ void setup(void)
   wifiManager.addParameter(&mqtt_url_param);
   wifiManager.addParameter(&mqtt_topic_param);
   wifiManager.addParameter(&frequency_param);
+  wifiManager.addParameter(&device_token_param);
   String wifiName = "@ESP32-";
   wifiName.concat(String((uint32_t)ESP.getEfuseMac(), HEX));
   if (!wifiManager.autoConnect(wifiName.c_str())) {
@@ -147,6 +152,7 @@ void setup(void)
   strcpy(mqtt_url, mqtt_url_param.getValue());
   strcpy(mqtt_topic, mqtt_topic_param.getValue());
   strcpy(frequency, frequency_param.getValue());
+  strcpy(device_token, device_token_param.getValue());
   interval = 1000 * atoi(frequency);
   if (shouldSaveConfig) {
     Serial.println("saving config");
@@ -155,7 +161,7 @@ void setup(void)
     json["mqtt_url"] = mqtt_url;
     json["mqtt_topic"] = mqtt_topic;
     json["frequency"] = frequency;
-
+    json["device_token"] = device_token;
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
       Serial.println("failed to open config file for writing");
@@ -172,7 +178,7 @@ void setup(void)
     Serial.println("Connecting to MQTT...");
    
     //Specify Sensor Node Number "07aFA07"///////////////////////////////////////////////////////////////////////////////////
-    if (mqttClient.connect("07aFA07", mqttUser, mqttPassword )) {
+    if (mqttClient.connect("07aFA07", device_token, device_token )) {
  
       Serial.println("connected");
  
