@@ -6,6 +6,7 @@
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <WiFiClientSecure.h>
 
 //Library ThingIO board
 #include <Wire.h>
@@ -30,7 +31,7 @@ unsigned long last_time = 0; //Start variable
 int T=0; // Time counter reset ESP when disconnect wifi
 
 //Set WIFI Client
-WiFiClient espClient;
+WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 
 boolean reconnect() {
@@ -92,9 +93,6 @@ void setupOTA()
   ArduinoOTA.onStart([]()
   {
     Serial.println("Start Updating....");
-    //    SerialBT.println("Start Updating....");
-
-    //    SerialBT.printf("Start Updating....Type:%s\n", (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem");
 
     Serial.printf("Start Updating....Type:%s\n", (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem");
   });
@@ -102,9 +100,7 @@ void setupOTA()
   ArduinoOTA.onEnd([]()
   {
 
-    //    SerialBT.println("Update Complete!");
     Serial.println("Update Complete!");
-
 
     ESP.restart();
   });
@@ -117,10 +113,9 @@ void setupOTA()
     //int pro = progress / (total / 100);
 
 
-    //    SerialBT.printf("Progress: %u%%\n", (progress / (total / 100)));
 
-    Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
-
+    Serial.println(pro);
+    SerialBT.println( pro);
   });
 
   ArduinoOTA.onError([](ota_error_t error)
@@ -165,25 +160,33 @@ void setupOTA()
 
 void setupWIFI()
 {
-  WiFi.setHostname(HOSTNAME.c_str());
+  int i = 0;
+  do {
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoConnect(true);
+    WiFi.setAutoReconnect(true);    //断开WiFi后自动重新连接,ESP32不可用
+    WiFi.setHostname(HOSTNAME.c_str());
 
 
-  //等待5000ms，如果没有连接上，就继续往下
-  //不然基本功能不可用
-  byte count = 0;
-  while (WiFi.status() != WL_CONNECTED && count < 10)
-  {
-    count ++;
-    delay(500);
-    Serial.print(".");
-  }
+    //等待5000ms，如果没有连接上，就继续往下
+    //不然基本功能不可用
+    byte count = 0;
+    while (WiFi.status() != WL_CONNECTED && count < 10)
+    {
+      count ++;
+      delay(500);
+      Serial.print(".");
+    }
 
 
-  if (WiFi.status() == WL_CONNECTED)
-    Serial.println("Connecting...OK.");
-  else
-    Serial.println("Connecting...Failed");
-
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("Connecting...OK.");
+      break;
+    } else {
+      Serial.println("Connecting...Failed");
+    }
+    i++;
+  }while (i > 5);
 }
 
 String getMacAddress() {
@@ -207,6 +210,22 @@ char mqtt_topic[50];
 char frequency[4];
 char device_token[25];
 char mqtt_port[5];
+char adc0min[5];
+char adc0max[5];
+char adc1min[5];
+char adc1max[5];
+char adc2min[5];
+char adc2max[5];
+char adc3min[5];
+char adc3max[5];
+int adc0n;
+int adc0x;
+int adc1n;
+int adc1x;
+int adc2n;
+int adc2x;
+int adc3n;
+int adc3x;
 bool shouldSaveConfig = false;
 
 //callback notifying us of the need to save config
@@ -241,11 +260,19 @@ void setup(void)
         if (json.success()) {
           Serial.println("\nparsed json");
           //strcpy(output, json["output"]);
-          strcpy(mqtt_url, json["mqtt_url"]);
-          strcpy(mqtt_topic, json["mqtt_topic"]);
-          strcpy(frequency, json["frequency"]);
-          strcpy(device_token, json["device_token"]);
-          strcpy(mqtt_port, json["mqtt_port"]);
+          if (json.containsKey("mqtt_url")) strcpy(mqtt_url, json["mqtt_url"]);
+          if (json.containsKey("mqtt_topic")) strcpy(mqtt_topic, json["mqtt_topic"]);
+          if (json.containsKey("frequency")) strcpy(frequency, json["frequency"]);
+          if (json.containsKey("device_token")) strcpy(device_token, json["device_token"]);
+          if (json.containsKey("mqtt_port")) strcpy(mqtt_port, json["mqtt_port"]);
+          if (json.containsKey("adc0min")) strcpy(adc0min, json["adc0min"]);
+          if (json.containsKey("adc0max")) strcpy(adc0max, json["adc0max"]);
+          if (json.containsKey("adc1min")) strcpy(adc1min, json["adc1min"]);
+          if (json.containsKey("adc1max")) strcpy(adc1max, json["adc1max"]);
+          if (json.containsKey("adc2min")) strcpy(adc2min, json["adc2min"]);
+          if (json.containsKey("adc2max")) strcpy(adc2max, json["adc2max"]);
+          if (json.containsKey("adc3min")) strcpy(adc3min, json["adc3min"]);
+          if (json.containsKey("adc3max")) strcpy(adc3max, json["adc3max"]);
         } else {
           Serial.println("failed to load json config");
         }
@@ -260,15 +287,32 @@ void setup(void)
   WiFiManagerParameter mqtt_topic_param("MQTT_TOPIC", "MQTT_TOPIC", mqtt_topic, 50);
   WiFiManagerParameter frequency_param("FREQUENCY", "FREQUENCY", frequency, 4);
   WiFiManagerParameter device_token_param("DEVICE_TOKEN", "DEVICE_TOKEN", device_token, 25);
+  WiFiManagerParameter adc0min_param("ADC0_MIN", "ADC0_MIN", adc0min, 5);
+  WiFiManagerParameter adc0max_param("ADC0_MAX", "ADC0_MAX", adc0max, 5);
+  WiFiManagerParameter adc1min_param("ADC1_MIN", "ADC1_MIN", adc1min, 5);
+  WiFiManagerParameter adc1max_param("ADC1_MAX", "ADC1_MAX", adc1max, 5);
+  WiFiManagerParameter adc2min_param("ADC2_MIN", "ADC2_MIN", adc2min, 5);
+  WiFiManagerParameter adc2max_param("ADC2_MAX", "ADC2_MAX", adc2max, 5);
+  WiFiManagerParameter adc3min_param("ADC3_MIN", "ADC3_MIN", adc3min, 5);
+  WiFiManagerParameter adc3max_param("ADC3_MAX", "ADC3_MAX", adc3max, 5);
   
 ///---------------------
-  wifiManager.setTimeout(120);
+  wifiManager.setTimeout(180);
   wifiManager.setAPCallback(configModeCallback);
+  wifiManager.setAPClientCheck(true);
   wifiManager.addParameter(&mqtt_url_param);
   wifiManager.addParameter(&mqtt_port_param);
   wifiManager.addParameter(&mqtt_topic_param);
   wifiManager.addParameter(&frequency_param);
   wifiManager.addParameter(&device_token_param);
+  wifiManager.addParameter(&adc0min_param);
+  wifiManager.addParameter(&adc0max_param);
+  wifiManager.addParameter(&adc1min_param);
+  wifiManager.addParameter(&adc1max_param);
+  wifiManager.addParameter(&adc2min_param);
+  wifiManager.addParameter(&adc2max_param);
+  wifiManager.addParameter(&adc3min_param);
+  wifiManager.addParameter(&adc3max_param);
   
   String wifiName = "@ESP32-";
   wifiName.concat(String((uint32_t)ESP.getEfuseMac(), HEX));
@@ -285,7 +329,23 @@ void setup(void)
   if (frequency_param.getValue() != "") strcpy(frequency, frequency_param.getValue());
   if (device_token_param.getValue() != "") strcpy(device_token, device_token_param.getValue());
   if (mqtt_port_param.getValue() != "") strcpy(mqtt_port, mqtt_port_param.getValue());
+  if (adc0min_param.getValue() != "") strcpy(adc0min, adc0min_param.getValue());
+  if (adc0max_param.getValue() != "") strcpy(adc0max, adc0max_param.getValue());
+  if (adc1min_param.getValue() != "") strcpy(adc1min, adc1min_param.getValue());
+  if (adc1max_param.getValue() != "") strcpy(adc1max, adc1max_param.getValue());
+  if (adc2min_param.getValue() != "") strcpy(adc2min, adc2min_param.getValue());
+  if (adc2max_param.getValue() != "") strcpy(adc2max, adc2max_param.getValue());
+  if (adc3min_param.getValue() != "") strcpy(adc3min, adc3min_param.getValue());
+  if (adc3max_param.getValue() != "") strcpy(adc3max, adc3max_param.getValue());
   interval = 1000 * atoi(frequency);
+  adc0n = atoi(adc0min);
+  adc0x = atoi(adc0max);
+  adc1n = atoi(adc1min);
+  adc1x = atoi(adc1max);
+  adc2n = atoi(adc2min);
+  adc2x = atoi(adc2max);
+  adc3n = atoi(adc3min);
+  adc3x = atoi(adc3max);
     Serial.println("saving config");
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
@@ -294,6 +354,14 @@ void setup(void)
     json["frequency"] = frequency;
     json["device_token"] = device_token;
     json["mqtt_port"] = mqtt_port;
+    json["adc0min"] = adc0min;
+    json["adc0max"] = adc0max;
+    json["adc1min"] = adc1min;
+    json["adc1max"] = adc1max;
+    json["adc2min"] = adc2min;
+    json["adc2max"] = adc2max;
+    json["adc3min"] = adc3min;
+    json["adc3max"] = adc3max;
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
       Serial.println("failed to open config file for writing");
@@ -304,12 +372,13 @@ void setup(void)
     configFile.close();
     //end save
   HOSTNAME.concat(getMacAddress());
+  setupWIFI();
   setupOTA();
   Serial.println("Connected to the WiFi network");
-  mqttClient.setServer(mqtt_url,1883);
+  mqttClient.setServer(mqtt_url,atoi(mqtt_port));
+  espClient.setInsecure();
   while (!mqttClient.connected()) {
     Serial.println("Connecting to MQTT...");
-   
     //Specify Sensor Node Number "07aFA07"///////////////////////////////////////////////////////////////////////////////////
     if (mqttClient.connect("07aFA07", device_token, device_token )) {
  
@@ -358,11 +427,6 @@ void loop(void)
 //======
 //Restert ESP 
   ArduinoOTA.handle();
-    if(millis() >= period) {
-     Serial.println("Restart ESP");
-     ESP.restart();
- }
-
  //Reconnect MQTT
   if (!mqttClient.connected()) {
     Serial.println("mqtt NOT connected");
@@ -399,10 +463,10 @@ void loop(void)
     adc3 = ads.readADC_SingleEnded(3);
 
     Serial.print(adc0); Serial.print(" ");  Serial.print(adc1); Serial.print(" ");   Serial.print(adc2); Serial.print(" ");  Serial.println(adc3);
-    float val0 = mapfloat(adc0, 2128, 10560, 0, 150);//Temperature 0 - 150
-    float val1 = mapfloat(adc1, 2128, 10560, 0, 150);//Temperature 0 - 150
-    float val2 = mapfloat(adc2, 2128, 10560, 0, 20);//Vibration 0 - 20
-    float val3 = mapfloat(adc3, 2128, 10560, 0, 20);//Vibration 0 - 20
+    float val0 = mapfloat(adc0, 2128, 10560, adc0n, adc0x);//Temperature 0 - 150
+    float val1 = mapfloat(adc1, 2128, 10560, adc1n, adc1x);//Temperature 0 - 150
+    float val2 = mapfloat(adc2, 2128, 10560, adc2n, adc2x);//Vibration 0 - 20
+    float val3 = mapfloat(adc3, 2128, 10560, adc3n, adc3x);//Vibration 0 - 20
 
 //=======
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -425,12 +489,6 @@ void loop(void)
     Serial.println("Success sending message");
   } else {
     Serial.println("Error sending message");
-    T=T+1;
-    delay(100);
-    if (T==30){
-    Serial.println("Restart ESP");
-    ESP.restart();
-    }
   }
  
   mqttClient.loop();
@@ -476,6 +534,5 @@ void loop(void)
     SerialBT.println("Heartbeat");
     previousMillis2 = currentMillis2;
   }
-    delay(10000);
   
 }//Closed void loop
