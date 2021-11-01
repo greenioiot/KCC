@@ -6,7 +6,7 @@
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 
 //Library ThingIO board
 #include <Wire.h>
@@ -31,7 +31,7 @@ unsigned long last_time = 0; //Start variable
 int T=0; // Time counter reset ESP when disconnect wifi
 
 //Set WIFI Client
-WiFiClientSecure espClient;
+WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
 boolean reconnect() {
@@ -208,7 +208,8 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 char mqtt_url[50];
 char mqtt_topic[50];
 char frequency[4];
-char device_token[25];
+char mqtt_user[25];
+char mqtt_pass[25];
 char mqtt_port[5];
 char adc0min[5];
 char adc0max[5];
@@ -254,25 +255,26 @@ void setup(void)
         std::unique_ptr<char[]> buf(new char[size]);
 
         configFile.readBytes(buf.get(), size);
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject& json = jsonBuffer.parseObject(buf.get());
-        json.printTo(Serial);
-        if (json.success()) {
+        DynamicJsonDocument jsonBuffer(1024);
+        deserializeJson(jsonBuffer, buf.get());
+        serializeJson(jsonBuffer, Serial);
+        if (!jsonBuffer.isNull()) {
           Serial.println("\nparsed json");
           //strcpy(output, json["output"]);
-          if (json.containsKey("mqtt_url")) strcpy(mqtt_url, json["mqtt_url"]);
-          if (json.containsKey("mqtt_topic")) strcpy(mqtt_topic, json["mqtt_topic"]);
-          if (json.containsKey("frequency")) strcpy(frequency, json["frequency"]);
-          if (json.containsKey("device_token")) strcpy(device_token, json["device_token"]);
-          if (json.containsKey("mqtt_port")) strcpy(mqtt_port, json["mqtt_port"]);
-          if (json.containsKey("adc0min")) strcpy(adc0min, json["adc0min"]);
-          if (json.containsKey("adc0max")) strcpy(adc0max, json["adc0max"]);
-          if (json.containsKey("adc1min")) strcpy(adc1min, json["adc1min"]);
-          if (json.containsKey("adc1max")) strcpy(adc1max, json["adc1max"]);
-          if (json.containsKey("adc2min")) strcpy(adc2min, json["adc2min"]);
-          if (json.containsKey("adc2max")) strcpy(adc2max, json["adc2max"]);
-          if (json.containsKey("adc3min")) strcpy(adc3min, json["adc3min"]);
-          if (json.containsKey("adc3max")) strcpy(adc3max, json["adc3max"]);
+          if (jsonBuffer.containsKey("mqtt_url")) strcpy(mqtt_url, jsonBuffer["mqtt_url"]);
+          if (jsonBuffer.containsKey("mqtt_topic")) strcpy(mqtt_topic, jsonBuffer["mqtt_topic"]);
+          if (jsonBuffer.containsKey("frequency")) strcpy(frequency, jsonBuffer["frequency"]);
+          if (jsonBuffer.containsKey("mqtt_user")) strcpy(mqtt_user, jsonBuffer["mqtt_user"]);
+          if (jsonBuffer.containsKey("mqtt_pass")) strcpy(mqtt_pass, jsonBuffer["mqtt_pass"]);
+          if (jsonBuffer.containsKey("mqtt_port")) strcpy(mqtt_port, jsonBuffer["mqtt_port"]);
+          if (jsonBuffer.containsKey("adc0min")) strcpy(adc0min, jsonBuffer["adc0min"]);
+          if (jsonBuffer.containsKey("adc0max")) strcpy(adc0max, jsonBuffer["adc0max"]);
+          if (jsonBuffer.containsKey("adc1min")) strcpy(adc1min, jsonBuffer["adc1min"]);
+          if (jsonBuffer.containsKey("adc1max")) strcpy(adc1max, jsonBuffer["adc1max"]);
+          if (jsonBuffer.containsKey("adc2min")) strcpy(adc2min, jsonBuffer["adc2min"]);
+          if (jsonBuffer.containsKey("adc2max")) strcpy(adc2max, jsonBuffer["adc2max"]);
+          if (jsonBuffer.containsKey("adc3min")) strcpy(adc3min, jsonBuffer["adc3min"]);
+          if (jsonBuffer.containsKey("adc3max")) strcpy(adc3max, jsonBuffer["adc3max"]);
         } else {
           Serial.println("failed to load json config");
         }
@@ -286,7 +288,8 @@ void setup(void)
   WiFiManagerParameter mqtt_port_param("MQTT_PORT", "MQTT_PORT", mqtt_port, 5);
   WiFiManagerParameter mqtt_topic_param("MQTT_TOPIC", "MQTT_TOPIC", mqtt_topic, 50);
   WiFiManagerParameter frequency_param("FREQUENCY", "FREQUENCY", frequency, 4);
-  WiFiManagerParameter device_token_param("DEVICE_TOKEN", "DEVICE_TOKEN", device_token, 25);
+  WiFiManagerParameter mqtt_user_param("MQTT_USER", "MQTT_USER", mqtt_user, 25);
+  WiFiManagerParameter mqtt_pass_param("MQTT_PASS", "MQTT_PASS", mqtt_pass, 25);
   WiFiManagerParameter adc0min_param("ADC0_MIN", "ADC0_MIN", adc0min, 5);
   WiFiManagerParameter adc0max_param("ADC0_MAX", "ADC0_MAX", adc0max, 5);
   WiFiManagerParameter adc1min_param("ADC1_MIN", "ADC1_MIN", adc1min, 5);
@@ -304,7 +307,8 @@ void setup(void)
   wifiManager.addParameter(&mqtt_port_param);
   wifiManager.addParameter(&mqtt_topic_param);
   wifiManager.addParameter(&frequency_param);
-  wifiManager.addParameter(&device_token_param);
+  wifiManager.addParameter(&mqtt_user_param);
+  wifiManager.addParameter(&mqtt_pass_param);
   wifiManager.addParameter(&adc0min_param);
   wifiManager.addParameter(&adc0max_param);
   wifiManager.addParameter(&adc1min_param);
@@ -327,7 +331,8 @@ void setup(void)
   if (mqtt_url_param.getValue() != "") strcpy(mqtt_url, mqtt_url_param.getValue());
   if (mqtt_topic_param.getValue() != "") strcpy(mqtt_topic, mqtt_topic_param.getValue());
   if (frequency_param.getValue() != "") strcpy(frequency, frequency_param.getValue());
-  if (device_token_param.getValue() != "") strcpy(device_token, device_token_param.getValue());
+  if (mqtt_user_param.getValue() != "") strcpy(mqtt_user, mqtt_user_param.getValue());
+  if (mqtt_pass_param.getValue() != "") strcpy(mqtt_pass, mqtt_pass_param.getValue());
   if (mqtt_port_param.getValue() != "") strcpy(mqtt_port, mqtt_port_param.getValue());
   if (adc0min_param.getValue() != "") strcpy(adc0min, adc0min_param.getValue());
   if (adc0max_param.getValue() != "") strcpy(adc0max, adc0max_param.getValue());
@@ -347,28 +352,28 @@ void setup(void)
   adc3n = atoi(adc3min);
   adc3x = atoi(adc3max);
     Serial.println("saving config");
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    json["mqtt_url"] = mqtt_url;
-    json["mqtt_topic"] = mqtt_topic;
-    json["frequency"] = frequency;
-    json["device_token"] = device_token;
-    json["mqtt_port"] = mqtt_port;
-    json["adc0min"] = adc0min;
-    json["adc0max"] = adc0max;
-    json["adc1min"] = adc1min;
-    json["adc1max"] = adc1max;
-    json["adc2min"] = adc2min;
-    json["adc2max"] = adc2max;
-    json["adc3min"] = adc3min;
-    json["adc3max"] = adc3max;
+    DynamicJsonDocument jsonBuffer(1024);
+    jsonBuffer["mqtt_url"] = mqtt_url;
+    jsonBuffer["mqtt_topic"] = mqtt_topic;
+    jsonBuffer["frequency"] = frequency;
+    jsonBuffer["mqtt_user"] = mqtt_user;
+    jsonBuffer["mqtt_pass"] = mqtt_pass;
+    jsonBuffer["mqtt_port"] = mqtt_port;
+    jsonBuffer["adc0min"] = adc0min;
+    jsonBuffer["adc0max"] = adc0max;
+    jsonBuffer["adc1min"] = adc1min;
+    jsonBuffer["adc1max"] = adc1max;
+    jsonBuffer["adc2min"] = adc2min;
+    jsonBuffer["adc2max"] = adc2max;
+    jsonBuffer["adc3min"] = adc3min;
+    jsonBuffer["adc3max"] = adc3max;
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
       Serial.println("failed to open config file for writing");
     }
 
-    json.printTo(Serial);
-    json.printTo(configFile);
+    serializeJson(jsonBuffer, Serial);
+    serializeJson(jsonBuffer, configFile);
     configFile.close();
     //end save
   HOSTNAME.concat(getMacAddress());
@@ -376,11 +381,10 @@ void setup(void)
   setupOTA();
   Serial.println("Connected to the WiFi network");
   mqttClient.setServer(mqtt_url,atoi(mqtt_port));
-  espClient.setInsecure();
   while (!mqttClient.connected()) {
     Serial.println("Connecting to MQTT...");
     //Specify Sensor Node Number "07aFA07"///////////////////////////////////////////////////////////////////////////////////
-    if (mqttClient.connect("07aFA07", device_token, device_token )) {
+    if (mqttClient.connect("07aFA07", mqtt_user, mqtt_pass )) {
  
       Serial.println("connected");
  
@@ -470,8 +474,7 @@ void loop(void)
 
 //=======
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-   DynamicJsonBuffer jbuffer;
-   JsonObject& root = jbuffer.createObject();
+   DynamicJsonDocument root(1024);
       root["N011"] = (val0);// setting up the variable sensor to hold JSON object root]
       root["N012"] = (val1);// setting up the variable sensor to hold JSON object root]
       root["N013"] = (val2);
@@ -481,7 +484,7 @@ void loop(void)
   //char JSONmessageBuffer[100];
   //JSONencoder.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
   char JSONmessageBuffer[100];
-  root.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+  serializeJson(root, JSONmessageBuffer);
   Serial.println("Sending message to MQTT topic..");
   Serial.println(JSONmessageBuffer);
 
